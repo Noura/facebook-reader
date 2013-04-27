@@ -1,4 +1,8 @@
 facebook-reader
 ===============
 
-I want to do some basic language analysis on facebook statuses. For example, common words for everyone, or for specific groups. Do you have any ideas of what questions I should try to answer?
+I want to try to group my facebook friends into demographics algorithmically based on the words they used in their facebook status messages. I am most definitely NOT sharing any facebook data, but with this code you can play around with your facebook friends' data.
+
+0. Go to https://developers.facebook.com/tools/explorer and get an API key with all the permissions so you can read your own data
+1. fab gather
+2. fab analyze
