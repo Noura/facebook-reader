@@ -10,6 +10,10 @@ from secret_constants import access_token
 
 outdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), config.data_dir)
 
+#######################
+### DATA STRUCTURES ###
+#######################
+
 class Stats(object):
     def __init__(self, _dict=None):
         if _dict:
@@ -65,7 +69,7 @@ class FriendWordCounts(object):
     def word_counts(self):
         return self.counts.iteritems()
 
-class Population(object):
+class PopulationWordCounts(FriendWordCounts):
     def __init__(self, name=None, _dict=None):
         if _dict:
             self.name = _dict['name']
@@ -92,32 +96,117 @@ class Population(object):
             self.counts[word]['ids'].append(word_counts.friend_id)
             self.counts[word]['stats'].update(count)
             self.n += 1
-    def word_counts(self):
-        return self.counts.iteritems()
 
-class PopulationEncoder(json.JSONEncoder):
+# the Population's Stats objects get encoded this way
+class PopulationWordCountsEncoder(json.JSONEncoder):
     def default(self, obj):
         if not isinstance(obj, Population):
-            return super(PopulationEncoder, self).default(obj)
+            return super(PopulationWordCountsEncoder, self).default(obj)
         d = obj.__dict__
         for s in d['counts']:
             d['counts'][s]['stats'] = d['counts'][s]['stats'].__dict__
         return d
 
+class FriendInfo(object):
+    def __init__(self, o):
+        for key in o:
+            setattr(self, key, o[key])
+    def get_activities(self):
+        d = getattr(self, 'activities', None)
+        if not d or type(d) != 'dict' or 'data' not in d:
+            return []
+        activities = []
+        for a in d['data']:
+            activities.append(a['name'])
+        return activities
+    def get_birthday(self):
+        d = getattr(self, 'birthday', None)
+        print d
+        if not d:
+            return
+        b = d.split('/')
+        month = int(b[0])
+        day = int(b[1])
+        if len(b) == 2:
+            return month, day, None
+        if len(b) == 3:
+            year = int(b[2])
+            return month, day, year
+    def get_astrological_sign(self):
+        birthday = self.get_birthday()
+        if not birthday:
+            return
+        month, day, year = birthday
+        if (month == 12 and day >= 22) or \
+           (month == 1 and day <= 19):
+            return 'Capricorn'
+        if (month == 1 and day >= 20) or \
+           (month == 2 and day <= 18):
+            return 'Aquarius'
+        if (month == 2 and day >= 19) or \
+           (month == 3 and day <= 20):
+            return 'Pisces'
+        if (month == 3 and day >= 21) or \
+           (month == 4 and day <= 19):
+            return 'Aries'
+        if (month == 4 and day >= 20) or \
+           (month == 5 and day <= 20):
+            return 'Taurus'
+        if (month == 5 and day >= 21) or \
+           (month == 6 and day <= 20):
+            return 'Gemini'
+        if (month == 6 and day >= 21) or \
+           (month == 7 and day <= 22):
+            return 'Cancer'
+        if (month == 7 and day >= 23) or \
+           (month == 8 and day <= 22):
+            return 'Leo'
+        if (month == 8 and day >= 23) or \
+           (month == 9 and day <= 22):
+            return 'Virgo'
+        if (month == 9 and day >= 23) or \
+           (month == 10 and day <= 22):
+            return 'Libra'
+        if (month == 10 and day >= 23) or \
+           (month == 11 and day <= 21):
+            return 'Scorpio'
+        if (month == 11 and day >= 22) or \
+           (month == 12 and day <= 21):
+            return 'Sagittarius'
+    def get_age(self):
+        birthday = self.get_birthday()
+        if not birthday:
+            return
+        month, day, year = birthday
+
+def test_friend_info():
+    friends = get_friends()
+    for friend in friends[0:50]:
+        with open(os.path.join(outdir, config.friend_info_filename(friend['id'], friend['name'])), 'r') as fin:
+            o = json.loads(fin.read())
+        info = FriendInfo(o)
+        print info.get_birthday()
+        print info.get_activities()
+        print info.get_astrological_sign()
+        
+
+##################################
+### TALK TO FACEBOOK GRAPH API ###
+##################################
+
 class FacebookException(Exception):
     pass
 
-def fb_call(node, fields, page_url=None):
+def fb_call(node, section='', params=None, page_url=None):
     if page_url:
         r = requests.get(page_url)
     else:
-        if type(fields) == 'list' or type(fields) == 'tuple':
-            combined = ''
-            for f in fields:
-                combined += str(f) + ','
-            fields = combined[0:-1] # remove last comma
-        params = {'access_token': access_token, 'fields': fields}
-        r = requests.get(config.fb_graph_url + node + '?', params=params)
+        params['access_token'] = access_token
+        url = config.fb_graph_url + node
+        if section:
+            url += '/' + section
+        url += '?'
+        r = requests.get(url, params=params)
     r = r.json()
     if 'error' in r:
         raise FacebookException('error in response from facebook:' + json.dumps(r['error']))
@@ -129,10 +218,14 @@ def fb_getter(node, fields, out):
         f = open(out, 'r')
         return json.loads(f.read())
     except IOError:
-        data = fb_call(node, fields)
+        data = fb_call(node, params={'fields':fields})
         with open(out, 'w') as out:
             out.write(json.dumps(data, indent=4, sort_keys=True))
         return data
+
+###################
+### GATHER DATA ###
+###################
 
 def get_friends():
     data = fb_getter('me', 'friends', config.friends_list_filename)
@@ -152,7 +245,7 @@ def process_collect_statuses(q, i):
         msgs = []
         page_url = None
         while True:
-            r = fb_call(friend['id'], 'statuses', page_url)
+            r = fb_call(friend['id'], section='statuses', params={'limit':100}, page_url=page_url)
             if 'data' in r:
                 d = r
             elif 'statuses' in r and 'data' in r['statuses']:
@@ -197,6 +290,9 @@ def friend_statuses(friend_id, friend_name):
         except KeyError:
             pass
 
+####################
+### ANALYZE DATA ###
+####################
 
 def get_FriendWordCounts(friend):
     out = os.path.join(outdir, config.friend_word_counts_filename(friend['id'], friend['name']))
@@ -211,36 +307,46 @@ def get_FriendWordCounts(friend):
             f.write(json.dumps(word_counts.__dict__, indent=4, sort_keys=True))
         return word_counts
 
-def word_counts():
+def friend_word_counts():
     # iterates over the word counts for all friends
     # for missing data it calculates word counts
     for friend in get_friends():
         yield get_FriendWordCounts(friend)
 
-def collect_word_counts():
-    for wc in word_counts():
+def collect_friend_word_counts():
+    for wc in friend_word_counts():
         print wc.friend_id
 
-def population_stats(population_name, friends=None):
-    out = os.path.join(outdir, config.population_filename('everyone'))
+def population_word_counts(population_name, friends=None):
+    out = os.path.join(outdir, config.population_filename(population_name))
     try:
         with open(out, 'r') as f:
-            return Population(_dict=json.loads(f.read()))
+            return PopulationWordCounts(_dict=json.loads(f.read()))
     except IOError:
         if population_name == 'everyone':
             friends = get_friends()
-        pop = Population(population_name)
+        pop = PopulationWordCounts(population_name)
         for friend in friends:
             pop.update(get_FriendWordCounts(friend))
 
         with open(os.path.join(outdir, config.population_filename('everyone')), 'w') as out:
-            out.write(json.dumps(pop, cls=PopulationEncoder, indent=4, sort_keys=True))
+            out.write(json.dumps(pop, cls=PopulationWordCountsEncoder, indent=4, sort_keys=True))
         return pop
 
 def find_interesting_words():
-    pop = population_stats('everyone')
+    pop = population_word_counts('everyone')
+    friend_word_counts = {}
+    for wc in word_counts():
+        friend_word_counts[wc.friend_id] = wc.counts
     for word, d in pop.word_counts():
-        if d['stats'].n() > 1:
+        if d['stats'].n() > 10:
+            cutoff = 1.5*d['stats'].std_dev()
+            avg = d['stats'].avg()
+            highs = []
+            for friend_id in d['ids']:
+                diff = friend_word_counts[friend_id][word] - avg
+                if diff > cutoff:
+                    highs.append(friend_id)
             s1 = word
             print s1, ' '*(20-len(s1)),
             s2 = str(d['stats'].n())
@@ -249,6 +355,15 @@ def find_interesting_words():
             print s3, ' '*(7-len(s3)),
             s4 = "%.5f" % d['stats'].std_dev()
             print s4, ' '*(7-len(s4))
+            std_dev = d['stats'].std_dev()
+            print '\t highs:', highs
+
+
+
+
+#################
+### SHORTCUTS ###
+#################
 
 def gather():
     get_friends()
@@ -256,7 +371,7 @@ def gather():
     collect_info()
 
 def analyze():
-    collect_word_counts()
-    population_stats('everyone')
+    collect_friend_word_counts()
+    population_word_counts('everyone')
     find_interesting_words()
 
