@@ -4,6 +4,7 @@ import os
 import re
 from multiprocessing import Process, Queue
 from Queue import Empty
+import datetime
 
 import config
 from secret_constants import access_token
@@ -121,7 +122,6 @@ class FriendInfo(object):
         return activities
     def get_birthday(self):
         d = getattr(self, 'birthday', None)
-        print d
         if not d:
             return
         b = d.split('/')
@@ -178,17 +178,28 @@ class FriendInfo(object):
         if not birthday:
             return
         month, day, year = birthday
+        if not year:
+            return
+        now = datetime.datetime.now()
+        age = now.year - year
+        if month > now.month or \
+           month == now.month and day > now.day:
+           age -= 1
+        return age
 
 def test_friend_info():
-    friends = get_friends()
-    for friend in friends[0:50]:
+    friends = [{'id':'1145101048', 'name':'Jessica Noglows'}]
+    for friend in friends:
         with open(os.path.join(outdir, config.friend_info_filename(friend['id'], friend['name'])), 'r') as fin:
             o = json.loads(fin.read())
         info = FriendInfo(o)
-        print info.get_birthday()
-        print info.get_activities()
-        print info.get_astrological_sign()
-        
+        if info.get_birthday():
+            print '\n'
+            print 'birthday', info.get_birthday()
+            print 'activities', info.get_activities()
+            print 'astrology', info.get_astrological_sign()
+            print 'age',info.get_age()
+
 
 ##################################
 ### TALK TO FACEBOOK GRAPH API ###
