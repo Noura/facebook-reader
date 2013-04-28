@@ -19,3 +19,5 @@ def population_filename(name):
 
 n_processes = 4
 info_fields = 'id,name,about,address,bio,age_range,birthday,currency,devices,education,favorite_athletes,favorite_teams,gender,hometown,inspirational_people,interested_in,languages,locale,location,meeting_for,political,quotes,relationship_status,religion,sports,work,significant_other,books,checkins,albums,events,activities,games,groups,interests,likes,locations,music,movies,notes,photos,picture,posts,television'
+
+common_words = 'the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she or an will my one all would there their what so up out if about who get which go me when make can like time no just him know take people into year your good some could them see other than then now look only come its over think also back after use two how our work first well way is t s much even new want because any these give day most us'.split(' ')

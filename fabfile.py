@@ -5,6 +5,7 @@ import re
 from multiprocessing import Process, Queue
 from Queue import Empty
 import datetime
+import string
 
 import config
 from secret_constants import access_token
@@ -56,7 +57,7 @@ class FriendWordCounts(object):
         # words is a list or generator 
         # of words or of messages that should be split into words
         for ws in words:
-            for w in re.findall('[A-Za-z0-9]+', ws):
+            for w in re.findall('[a-z0-9]+', ws.lower()):
                 if w not in self.counts:
                     self.counts[w] = 0
                 self.counts[w] += 1
@@ -109,18 +110,32 @@ class PopulationWordCountsEncoder(json.JSONEncoder):
         return d
 
 class FriendInfo(object):
-    def __init__(self, o):
+    def __init__(self, o, friend_id=None, friend_name=None):
+        if friend_id:
+            self.id = friend_id
+        if friend_name:
+            self.name = friend_name
         for key in o:
             setattr(self, key, o[key])
+    def get_name(self):
+        return self.name
+    def get_id(self):
+        return self.id
+    def clean_string(self, s):
+        return list(set(re.findall('[a-z0-9]+', s.lower())).difference(config.common_words))
     def get_activities(self):
         d = getattr(self, 'activities', None)
-        print 'got activities'
-        if not d or type(d) != 'dict' or 'data' not in d:
+        if not d or type(d) != dict or 'data' not in d:
             return []
         activities = []
         for a in d['data']:
-            activities.append(a['name'])
+            activities.append(a['name'].lower())
         return activities
+    def get_bio(self):
+        d = getattr(self, 'bio', None)
+        if not d:
+            return
+        return self.clean_string(d)
     def get_birthday(self):
         d = getattr(self, 'birthday', None)
         if not d:
@@ -187,19 +202,96 @@ class FriendInfo(object):
            month == now.month and day > now.day:
            age -= 1
         return age
-
-def test_friend_info():
-    friends = [{'id':'1145101048', 'name':'Jessica Noglows'}]
-    for friend in friends:
-        with open(os.path.join(outdir, config.friend_info_filename(friend['id'], friend['name'])), 'r') as fin:
-            o = json.loads(fin.read())
-        info = FriendInfo(o)
-        if info.get_birthday():
-            print '\n'
-            print 'birthday', info.get_birthday()
-            print 'activities', info.get_activities()
-            print 'astrology', info.get_astrological_sign()
-            print 'age',info.get_age()
+    def get_books(self):
+        d = getattr(self, 'books', None)
+        if not d or 'data' not in d:
+            return
+        books = []
+        for b in d['data']:
+            books.append(' '.join(self.clean_string(b['name'])))
+        return books
+    def get_checkins(self):
+        d = getattr(self, 'checkins', None)
+        if not d or 'data' not in d:
+            return
+        checkins = []
+        for c in d['data']:
+            if 'place' in c and 'location' in c['place']:
+                l = c['place']['location']
+                place = ''
+                if 'city' in l:
+                    place += l['city']
+                if 'state' in l:
+                    place += ' ' + l['state']
+                if 'country' in l:
+                    place += ' ' + l['country']
+                if place:
+                    checkins.append(place)
+        return checkins
+    def get_currency(self):
+        d = getattr(self, 'currency', None)
+        if not d or 'user_currency' not in d:
+            return
+        return d['user_currency']
+    def get_schools(self):
+        d = getattr(self, 'education', None)
+        if not d:
+            return
+        schools = []
+        for s in d:
+            if 'school' in s and 'name' in s['school']:
+                schools.append(s['school']['name'])
+        return schools
+    def get_games(self):
+        d = getattr(self, 'games', None)
+        if not d or 'data' not in d:
+            return
+        games = []
+        for g in d['data']:
+            if 'name' in g:
+                games.append(g['name'])
+        return games
+    def get_interests(self):
+        d = getattr(self, 'interests', None)
+        if not d or 'data' not in d:
+            return
+        interests = []
+        for i in d['data']:
+            if 'name' in i:
+                interests.append(i['name'].lower())
+        return interests
+    compares = {
+            'bio':.01,
+            'birthday':1,
+            'activities':1,
+            'astrological_sign':.1,
+            'age':1,
+            'books':1,
+            'checkins':1,
+            'currency':1,
+            'schools':1,
+            'games':1,
+            'interests':1
+    }
+    def similarity_with(self, other):
+        sim = 0
+        why = {}
+        for attr, weight in FriendInfo.compares.iteritems():
+            self_val =  getattr(self, 'get_'+attr, lambda x: None)()
+            other_val = getattr(other, 'get_'+attr, lambda x: None)()
+            if self_val and other_val:
+                if type(self_val) == str or type(self_val) == tuple:
+                    incr = weight * (self_val == other_val)
+                    if incr:
+                        sim += incr
+                        why[attr] = self_val
+                elif type(self_val) == list:
+                    intersect = set(self_val).intersection(set(other_val))
+                    incr = weight * len(intersect)
+                    if incr:
+                        sim += incr
+                        why[attr] = list(intersect)
+        return {'score':sim, 'why':why}
 
 
 ##################################
@@ -302,6 +394,7 @@ def friend_statuses(friend_id, friend_name):
         except KeyError:
             pass
 
+
 ####################
 ### ANALYZE DATA ###
 ####################
@@ -318,6 +411,15 @@ def get_FriendWordCounts(friend):
         with open(out, 'w') as f:
             f.write(json.dumps(word_counts.__dict__, indent=4, sort_keys=True))
         return word_counts
+
+def get_FriendInfo(friend):
+    out = os.path.join(outdir, config.friend_info_filename(friend['id'], friend['name']))
+    try:
+        with open(out, 'r') as f:
+            o = json.loads(f.read())
+    except IOError:
+        o = fb_getter(friend['id'], config.info_fields, config.friend_info_filename(friend['id'], friend['name']))
+    return FriendInfo(o, friend_id=friend['id'], friend_name=friend['name'])
 
 def friend_word_counts():
     # iterates over the word counts for all friends
@@ -346,7 +448,26 @@ def population_word_counts(population_name, friends=None):
         return pop
 
 def find_interesting_words():
-    pop = population_word_counts('everyone')
+    friends = get_friends()
+
+    pop_word_counts = population_word_counts('everyone')
+
+    friends_info = []
+    for f in friends:
+        friends_info.append(get_FriendInfo(f))
+
+    similarity_stats = Stats()
+    for i in range(len(friends)):
+        f1 = friends_info[i]
+        for j in range(i+1, len(friends)):
+            f2 = friends_info[j]
+            sim = f1.similarity_with(f2)
+            similarity_stats.update(sim['score'])
+
+    print 'average similarity between random people', similarity_stats.avg()
+    print 'std dev similarity between random people', similarity_stats.std_dev()
+
+"""
     friend_word_counts = {}
     for wc in word_counts():
         friend_word_counts[wc.friend_id] = wc.counts
@@ -369,8 +490,25 @@ def find_interesting_words():
             print s4, ' '*(7-len(s4))
             std_dev = d['stats'].std_dev()
             print '\t highs:', highs
+"""
 
-
+def test_friend_info():
+    #f1 = get_FriendInfo({'id':'1510738', 'name':'Christine Stawitz'})
+    #f2 = get_FriendInfo({'id':'1237879', 'name':'Clark Leung'})
+    #print f1.similarity_with(f2)
+    friends = get_friends()
+    friend_infos = [get_FriendInfo(friend) for friend in friends]
+    n = 50
+    for i in range(n):
+        f1 = friend_infos[i]
+        for j in range(i+1, n):
+            f2 = friend_infos[j]
+            sim = f1.similarity_with(f2)
+            if sim['score']:
+                print '\n'
+                print f1.get_name(), '&', f2.get_name()
+                print sim['score']
+                print '\t\t', sim['why']
 
 
 #################
