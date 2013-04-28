@@ -14,8 +14,9 @@ def friend_statuses_filename(frid, frname):
 def friend_word_counts_filename(frid, frname):
     return base_friend_filename(frid, frname) + 'word_counts.txt'
 
-def population_filename(name):
-    return 'population_' + name + '.txt'
+def population_word_counts_filename(name):
+    return 'population_' + name + 'word_counts.txt'
+population_similarity_stats_filename = 'population_similarity_stats.txt'
 
 n_processes = 4
 info_fields = 'id,name,about,address,bio,age_range,birthday,currency,devices,education,favorite_athletes,favorite_teams,gender,hometown,inspirational_people,interested_in,languages,locale,location,meeting_for,political,quotes,relationship_status,religion,sports,work,significant_other,books,checkins,albums,events,activities,games,groups,interests,likes,locations,music,movies,notes,photos,picture,posts,television'

@@ -20,13 +20,21 @@ class Stats(object):
     def __init__(self, _dict=None):
         if _dict:
             self.sums = _dict['sums']
+            self.min = _dict['min']
+            self.max = _dict['max']
         else:
             self.sums = [0, 0, 0, 0, 0]
+            self.min = None
+            self.max = None
     def update(self, x):
         prod = 1
         for i in range(len(self.sums)):
             self.sums[i] += prod
             prod *= x
+        if self.min == None or x < self.min:
+            self.min = x
+        if self.max == None or x > self.max:
+            self.max = x
     def n(self):
         return self.sums[0]
     def avg(self):
@@ -39,6 +47,26 @@ class Stats(object):
             return None
         else:
             return (float(self.sums[2])/self.sums[0] - self.avg()**2)**(.5)
+    def row_display(self):
+        column_1 = "%.3f" % self.min
+        column_2 = "%.3f" % self.max
+        avg = self.avg()
+        if avg:
+            column_3 = "%.3f" % avg
+        else:
+            column_3 = 'None'
+        std_dev = self.std_dev()
+        if std_dev:
+            column_4 = "%.3f" % std_dev
+        else:
+            column_4 = 'None'
+        row = ''
+        row += column_1 + (' '*(7 - len(column_1)))
+        row += column_2 + (' '*(7 - len(column_2)))
+        row += column_3 + (' '*(7 - len(column_3)))
+        row += column_4 + (' '*(7 - len(column_4)))
+        return row
+
 
 class FriendWordCounts(object):
     def __init__(self, friend_id=None, friend_name=None, _dict=None):
@@ -102,7 +130,7 @@ class PopulationWordCounts(FriendWordCounts):
 # the Population's Stats objects get encoded this way
 class PopulationWordCountsEncoder(json.JSONEncoder):
     def default(self, obj):
-        if not isinstance(obj, Population):
+        if not isinstance(obj, PopulationWordCounts):
             return super(PopulationWordCountsEncoder, self).default(obj)
         d = obj.__dict__
         for s in d['counts']:
@@ -432,7 +460,7 @@ def collect_friend_word_counts():
         print wc.friend_id
 
 def population_word_counts(population_name, friends=None):
-    out = os.path.join(outdir, config.population_filename(population_name))
+    out = os.path.join(outdir, config.population_word_counts_filename(population_name))
     try:
         with open(out, 'r') as f:
             return PopulationWordCounts(_dict=json.loads(f.read()))
@@ -443,54 +471,63 @@ def population_word_counts(population_name, friends=None):
         for friend in friends:
             pop.update(get_FriendWordCounts(friend))
 
-        with open(os.path.join(outdir, config.population_filename('everyone')), 'w') as out:
-            out.write(json.dumps(pop, cls=PopulationWordCountsEncoder, indent=4, sort_keys=True))
+        with open(out, 'w') as f:
+            f.write(json.dumps(pop, cls=PopulationWordCountsEncoder, indent=4, sort_keys=True))
         return pop
+
+def similarity_stats(population_name=None, friends=None):
+    def calc(friends):
+        friends_info = [get_FriendInfo(f) for f in friends]
+        similarity_stats = Stats()
+        for i in range(len(friends)):
+            f1 = friends_info[i]
+            for j in range(i+1, len(friends)):
+                f2 = friends_info[j]
+                sim = f1.similarity_with(f2)
+                similarity_stats.update(sim['score'])
+        return similarity_stats
+
+    # only write to a file if population_name == 'everyone'
+    # because that is what takes a long time to calculate
+    if population_name == 'everyone':
+        out = os.path.join(outdir, config.population_similarity_stats_filename)
+        try:
+            with open(out, 'r') as f:
+                return Stats(_dict=json.loads(f.read()))
+        except IOError:
+            stats = calc(get_friends())
+            with open(out, 'w') as f:
+                f.write(json.dumps(stats.__dict__, indent=4, sort_keys=True))
+            return stats
+    else:
+        return calc(friends)
 
 def find_interesting_words():
     friends = get_friends()
+    pop_wcs = population_word_counts('everyone')
+    pop_sim_stats = similarity_stats('everyone')
+    friend_wcs = {wc.friend_id: wc for wc in friend_word_counts()}
 
-    pop_word_counts = population_word_counts('everyone')
 
-    friends_info = []
-    for f in friends:
-        friends_info.append(get_FriendInfo(f))
-
-    similarity_stats = Stats()
-    for i in range(len(friends)):
-        f1 = friends_info[i]
-        for j in range(i+1, len(friends)):
-            f2 = friends_info[j]
-            sim = f1.similarity_with(f2)
-            similarity_stats.update(sim['score'])
-
-    print 'average similarity between random people', similarity_stats.avg()
-    print 'std dev similarity between random people', similarity_stats.std_dev()
-
-"""
-    friend_word_counts = {}
-    for wc in word_counts():
-        friend_word_counts[wc.friend_id] = wc.counts
-    for word, d in pop.word_counts():
-        if d['stats'].n() > 10:
-            cutoff = 1.5*d['stats'].std_dev()
-            avg = d['stats'].avg()
+    pop_cutoff = pop_sim_stats.avg() + 2*pop_sim_stats.std_dev()
+    group_sims = Stats()
+    for word, d in pop_wcs.word_counts():
+        if d['stats'].n() > 1: # more than 1 person used this word
+            cutoff = d['stats'].avg() + 2*d['stats'].std_dev()
             highs = []
-            for friend_id in d['ids']:
-                diff = friend_word_counts[friend_id][word] - avg
-                if diff > cutoff:
+            for friend_id in d['ids']: # of the people who used it a lot
+                if friend_wcs[friend_id].counts[word] > cutoff:
                     highs.append(friend_id)
-            s1 = word
-            print s1, ' '*(20-len(s1)),
-            s2 = str(d['stats'].n())
-            print s2, ' '*(5-len(s2)),
-            s3 = "%.5f" % d['stats'].avg()
-            print s3, ' '*(7-len(s3)),
-            s4 = "%.5f" % d['stats'].std_dev()
-            print s4, ' '*(7-len(s4))
-            std_dev = d['stats'].std_dev()
-            print '\t highs:', highs
-"""
+            if len(highs) > 1:         # how similar are they?
+                sim_stats = similarity_stats(friends = [{'id':i, 'name':friend_wcs[i].friend_name} for i in highs])
+                avg = sim_stats.avg()
+                group_sims.update(avg)
+
+    print 'EVERYONE'
+    print pop_sim_stats.row_display()
+
+    print '\nGROUPS'
+    print group_sims.row_display()
 
 def test_friend_info():
     #f1 = get_FriendInfo({'id':'1510738', 'name':'Christine Stawitz'})
