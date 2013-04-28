@@ -364,13 +364,10 @@ def get_friends():
     return data['friends']['data']
 
 def process_collect_statuses(q, i):
-    print i, 'start'
     while True:
         try:
             friend = q.get(True, timeout=5)
-            print i, friend['name']
         except Empty:
-            print i, 'exiting'
             return
 
         out = os.path.join(outdir, config.friend_statuses_filename(friend['id'], friend['name']))
@@ -410,7 +407,6 @@ def collect_statuses():
 
 def collect_info():
     for friend in get_friends():
-        print friend['name'],
         fb_getter(friend['id'], config.info_fields, config.friend_info_filename(friend['id'], friend['name']))
 
 def friend_statuses(friend_id, friend_name):
@@ -457,7 +453,7 @@ def friend_word_counts():
 
 def collect_friend_word_counts():
     for wc in friend_word_counts():
-        print wc.friend_id
+        pass
 
 def population_word_counts(population_name=None, friends=None):
     out = os.path.join(outdir, config.population_word_counts_filename(population_name))

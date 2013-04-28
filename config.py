@@ -15,7 +15,7 @@ def friend_word_counts_filename(frid, frname):
     return base_friend_filename(frid, frname) + 'word_counts.txt'
 
 def population_word_counts_filename(name):
-    return 'population_' + name + 'word_counts.txt'
+    return 'population_' + name + '_word_counts.txt'
 population_similarity_stats_filename = 'population_similarity_stats.txt'
 
 n_processes = 4
