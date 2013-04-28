@@ -114,6 +114,7 @@ class FriendInfo(object):
             setattr(self, key, o[key])
     def get_activities(self):
         d = getattr(self, 'activities', None)
+        print 'got activities'
         if not d or type(d) != 'dict' or 'data' not in d:
             return []
         activities = []
