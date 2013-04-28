@@ -459,7 +459,7 @@ def collect_friend_word_counts():
     for wc in friend_word_counts():
         print wc.friend_id
 
-def population_word_counts(population_name, friends=None):
+def population_word_counts(population_name=None, friends=None):
     out = os.path.join(outdir, config.population_word_counts_filename(population_name))
     try:
         with open(out, 'r') as f:
@@ -502,12 +502,11 @@ def similarity_stats(population_name=None, friends=None):
     else:
         return calc(friends)
 
-def find_interesting_words():
+def analyze():
     friends = get_friends()
-    pop_wcs = population_word_counts('everyone')
-    pop_sim_stats = similarity_stats('everyone')
+    pop_wcs = population_word_counts(population_name='everyone')
+    pop_sim_stats = similarity_stats(population_name='everyone')
     friend_wcs = {wc.friend_id: wc for wc in friend_word_counts()}
-
 
     pop_cutoff = pop_sim_stats.avg() + 2*pop_sim_stats.std_dev()
     group_sims = Stats()
@@ -529,36 +528,17 @@ def find_interesting_words():
     print '\nGROUPS'
     print group_sims.row_display()
 
-def test_friend_info():
-    #f1 = get_FriendInfo({'id':'1510738', 'name':'Christine Stawitz'})
-    #f2 = get_FriendInfo({'id':'1237879', 'name':'Clark Leung'})
-    #print f1.similarity_with(f2)
-    friends = get_friends()
-    friend_infos = [get_FriendInfo(friend) for friend in friends]
-    n = 50
-    for i in range(n):
-        f1 = friend_infos[i]
-        for j in range(i+1, n):
-            f2 = friend_infos[j]
-            sim = f1.similarity_with(f2)
-            if sim['score']:
-                print '\n'
-                print f1.get_name(), '&', f2.get_name()
-                print sim['score']
-                print '\t\t', sim['why']
-
-
 #################
 ### SHORTCUTS ###
 #################
 
-def gather():
+def gather_data():
     get_friends()
     collect_statuses()
     collect_info()
 
-def analyze():
+def pre_analysis():
     collect_friend_word_counts()
-    population_word_counts('everyone')
-    find_interesting_words()
+    population_word_counts(population_name='everyone')
+    similarity_stats(population_name='everyone')
 
