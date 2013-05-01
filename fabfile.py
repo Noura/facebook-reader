@@ -22,10 +22,15 @@ class Stats(object):
             self.sums = _dict['sums']
             self.min = _dict['min']
             self.max = _dict['max']
+            self.data = _dict['data']
         else:
             self.sums = [0, 0, 0, 0, 0]
             self.min = None
             self.max = None
+            self.data = []
+    def multi_update(self, xs):
+        for x in xs:
+            self.update(x)
     def update(self, x):
         prod = 1
         for i in range(len(self.sums)):
@@ -35,6 +40,7 @@ class Stats(object):
             self.min = x
         if self.max == None or x > self.max:
             self.max = x
+        self.data.append(x)
     def n(self):
         return self.sums[0]
     def avg(self):
@@ -48,23 +54,23 @@ class Stats(object):
         else:
             return (float(self.sums[2])/self.sums[0] - self.avg()**2)**(.5)
     def row_display(self):
-        column_1 = "%.3f" % self.min
-        column_2 = "%.3f" % self.max
+        column_1 = "%.2f" % self.min
+        column_2 = "%.2f" % self.max
         avg = self.avg()
         if avg:
-            column_3 = "%.3f" % avg
+            column_3 = "%.2f" % avg
         else:
             column_3 = 'None'
         std_dev = self.std_dev()
         if std_dev:
-            column_4 = "%.3f" % std_dev
+            column_4 = "%.2f" % std_dev
         else:
             column_4 = 'None'
-        row = ''
-        row += column_1 + (' '*(7 - len(column_1)))
-        row += column_2 + (' '*(7 - len(column_2)))
-        row += column_3 + (' '*(7 - len(column_3)))
-        row += column_4 + (' '*(7 - len(column_4)))
+        row = 'min     max     avg     std_dev \n'
+        row += column_1 + (' '*(8 - len(column_1)))
+        row += column_2 + (' '*(8 - len(column_2)))
+        row += column_3 + (' '*(8 - len(column_3)))
+        row += column_4 + (' '*(8 - len(column_4)))
         return row
 
 
@@ -159,6 +165,11 @@ class FriendInfo(object):
         for a in d['data']:
             activities.append(a['name'].lower())
         return activities
+    def get_gender(self):
+        d = getattr(self, 'gender', None)
+        if not d:
+            return
+        return d
     def get_bio(self):
         d = getattr(self, 'bio', None)
         if not d:
@@ -270,6 +281,16 @@ class FriendInfo(object):
             if 'school' in s and 'name' in s['school']:
                 schools.append(s['school']['name'])
         return schools
+    def get_concentration(self):
+        d = getattr(self, 'education', None)
+        if not d:
+            return
+        subjects = []
+        for s in d:
+            if 'concentration' in s:
+                for c in s['concentration']:
+                    subjects.append(c['name'])
+        return subjects
     def get_games(self):
         d = getattr(self, 'games', None)
         if not d or 'data' not in d:
@@ -288,8 +309,36 @@ class FriendInfo(object):
             if 'name' in i:
                 interests.append(i['name'].lower())
         return interests
+    def get_groups(self):
+        d = getattr(self, 'groups', None)
+        if not d or 'data' not in d:
+            return
+        groups = []
+        for g in d['data']:
+            groups.append(self.clean_string(g['name']))
+    def get_languages(self):
+        d = getattr(self, 'languages', None)
+        if not d:
+            return
+        return [l['name'] for l in d]
+    def get_locale(self):
+        d = getattr(self, 'local', None)
+        if not d:
+            return
+        return d
+    def get_likes(self):
+        d = getattr(self, 'likes', None)
+        if not d or 'data' not in d:
+            return
+        likes = {}
+        for like in d['data']:
+            c = like['category']
+            if c not in likes:
+                likes[c] = 0
+            likes[c] += 1
+        return likes
     compares = {
-            'bio':.01,
+            'bio':.1,
             'birthday':1,
             'activities':1,
             'astrological_sign':.1,
@@ -299,7 +348,13 @@ class FriendInfo(object):
             'currency':1,
             'schools':1,
             'games':1,
-            'interests':1
+            'interests':1,
+            'gender':.01,
+            'locale':.1,
+            'groups': 1,
+            'concentration':2,
+            'languages':1,
+            'likes':1,
     }
     def similarity_with(self, other):
         sim = 0
@@ -319,6 +374,18 @@ class FriendInfo(object):
                     if incr:
                         sim += incr
                         why[attr] = list(intersect)
+                elif type(self_val) == dict:
+                    n = 0
+                    whys = []
+                    for key in self_val:
+                        if key in other_val:
+                            val = min(self_val[key], other_val[key])
+                            n += val
+                            whys.append(key + ' (' + str(val) + ')')
+                    incr = weight * n
+                    if incr:
+                        sim += incr
+                        why[attr] = whys
         return {'score':sim, 'why':why}
 
 
@@ -483,15 +550,16 @@ def similarity_stats(population_name=None, friends=None):
                 similarity_stats.update(sim['score'])
         return similarity_stats
 
-    # only write to a file if population_name == 'everyone'
-    # because that is what takes a long time to calculate
-    if population_name == 'everyone':
-        out = os.path.join(outdir, config.population_similarity_stats_filename)
+    if not friends:
+        friends = get_friends()
+
+    if population_name:
+        out = os.path.join(outdir, config.population_similarity_stats_filename(population_name))
         try:
             with open(out, 'r') as f:
                 return Stats(_dict=json.loads(f.read()))
         except IOError:
-            stats = calc(get_friends())
+            stats = calc(friends)
             with open(out, 'w') as f:
                 f.write(json.dumps(stats.__dict__, indent=4, sort_keys=True))
             return stats
@@ -506,6 +574,7 @@ def analyze():
 
     pop_cutoff = pop_sim_stats.avg() + 2*pop_sim_stats.std_dev()
     group_sims = Stats()
+    group_words = []
     for word, d in pop_wcs.word_counts():
         if d['stats'].n() > 1: # more than 1 person used this word
             cutoff = d['stats'].avg() + 2*d['stats'].std_dev()
@@ -514,15 +583,24 @@ def analyze():
                 if friend_wcs[friend_id].counts[word] > cutoff:
                     highs.append(friend_id)
             if len(highs) > 1:         # how similar are they?
-                sim_stats = similarity_stats(friends = [{'id':i, 'name':friend_wcs[i].friend_name} for i in highs])
-                avg = sim_stats.avg()
-                group_sims.update(avg)
+                sim_stats = similarity_stats(population_name='word_'+word, friends = [{'id':i, 'name':friend_wcs[i].friend_name} for i in highs])
+                group_words.append((word, sim_stats.avg()))
+                group_sims.multi_update(sim_stats.data)
 
     print 'EVERYONE'
     print pop_sim_stats.row_display()
 
     print '\nGROUPS'
     print group_sims.row_display()
+
+    group_words = sorted(group_words, key=lambda gw: gw[1], reverse=True)
+    print 'Words for which frequenty users were most similar'
+    n = min(len(group_words), 10)
+    for i in range(n):
+        print group_words[i]
+
+    with open('friends/group_sims.txt', 'w') as f:
+        f.write(json.dumps(group_sims.__dict__, indent=4, sort_keys=True))
 
 #################
 ### SHORTCUTS ###
