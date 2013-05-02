@@ -6,6 +6,7 @@ from multiprocessing import Process, Queue
 from Queue import Empty
 import datetime
 import string
+import matplotlib.pyplot as plt
 
 import config
 from secret_constants import access_token
@@ -599,8 +600,21 @@ def analyze():
     for i in range(n):
         print group_words[i]
 
-    with open('friends/group_sims.txt', 'w') as f:
+    with open(os.path.join(config.population_similarity_stats_filename('freq_word_users')), 'w') as f:
         f.write(json.dumps(group_sims.__dict__, indent=4, sort_keys=True))
+
+    plt.title('Similarity of all friend pairs')
+    n, bins, patches = plt.hist(pop_sim_stats.data, bins=20, range=[0,50])
+    plt.xlabel('Similarity')
+    plt.ylabel('Number of Friend Pairs')
+    plt.show()
+
+    plt.title('Similarity of pairs of friends who use the same word frequently')
+    n, bins, patches = plt.hist(group_sims.data, bins=20, range=[0,50])
+    plt.xlabel('Similarity')
+    plt.ylabel('Number of Friend Pairs')
+    plt.show()
+
 
 #################
 ### SHORTCUTS ###
