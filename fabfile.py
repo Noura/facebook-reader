@@ -603,17 +603,40 @@ def analyze():
     with open(os.path.join(config.population_similarity_stats_filename('freq_word_users')), 'w') as f:
         f.write(json.dumps(group_sims.__dict__, indent=4, sort_keys=True))
 
+    # bar chart for all friend pairs
     plt.title('Similarity of all friend pairs')
     n, bins, patches = plt.hist(pop_sim_stats.data, bins=20, range=[0,50])
     plt.xlabel('Similarity')
     plt.ylabel('Number of Friend Pairs')
     plt.show()
 
+    # pie chart for all friend pairs
+    N = float(sum(n))
+    fracs = [x/N for x in n]
+    bucket_size = bins[1] - bins[0]
+    labels = [str(b)+'-'+str(b+bucket_size) for b in bins[0:-1]]
+    print len(labels), len(fracs)
+    plt.title('Similarity of all friend pairs')
+    plt.pie(fracs, labels=labels)
+    plt.show()
+
+    # bar chart for word-sharing friend pairs
     plt.title('Similarity of pairs of friends who use the same word frequently')
     n, bins, patches = plt.hist(group_sims.data, bins=20, range=[0,50])
     plt.xlabel('Similarity')
     plt.ylabel('Number of Friend Pairs')
     plt.show()
+
+    # pie chart for all friend pairs
+    N = float(sum(n))
+    fracs = [x/N for x in n]
+    bucket_size = bins[1] - bins[0]
+    labels = [str(b)+'-'+str(b+bucket_size) for b in bins[0:-1]]
+    print len(labels), len(fracs)
+    plt.title('Similarity of pairs of friends who use the same word frequently')
+    plt.pie(fracs, labels=labels)
+    plt.show()
+
 
 
 #################
